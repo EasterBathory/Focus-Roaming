@@ -1,35 +1,61 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Remove remaining star map CSS and HTML remnants"""
-import re
+"""Find the exact syntax error by scanning for problematic patterns"""
 
 with open("index.html","r",encoding="utf-8") as f:
     html = f.read()
 
-# Remove star map CSS lines
-css_lines = [
-    "#starMapWrap{position:relative;border-radius:var(--r);overflow:hidden;border:1px solid var(--border);background:#020408;cursor:grab;margin-bottom:8px}\n",
-    "#starMapWrap:active{cursor:grabbing}\n",
-    "#starCanvas{display:block;width:100%}\n",
-    ".star-info-pop{position:absolute;background:rgba(28,28,30,.95);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--border2);border-radius:var(--r-sm);padding:10px 12px;font-size:11px;z-index:10;pointer-events:none;max-width:180px;box-shadow:0 12px 32px rgba(0,0,0,.6);display:none}\n",
-]
-for line in css_lines:
-    html = html.replace(line, "")
+script_start = html.find("<script>") + 8
+script_end = html.rfind("</script>")
+script = html[script_start:script_end]
+lines = script.split("\n")
 
-# Remove drawStarMap call in fetchPointData (if still present)
-html = re.sub(
-    r"\s*if\(document\.querySelector\('\.ptab\[data-tab=\"starmap\"\]'\)\?\.classList\.contains\(\"active\"\)\)drawStarMap\([^)]*\);",
-    "",
-    html
-)
+print(f"Script has {len(lines)} lines")
 
-# Remove the starmap tab HTML block in the other renderCard version (lines with starMapWrap canvas)
-html = re.sub(
-    r"\s*<div style=\"padding:10px\">\s*<div[^>]*>拖拽旋转[^<]*</div>\s*<div id=\"starMapWrap\"><canvas id=\"starCanvas\"></canvas><div[^>]*></div></div>\s*</div>`;\s*\n\s*const lastPt=points\[points\.length-1\];\s*\n\s*drawStarMap\([^)]*\);",
-    "",
-    html
-)
+# Check for unclosed template literals by tracking backtick state
+bt_open = False
+bt_line = 0
+issues = []
 
-with open("index.html","w",encoding="utf-8") as f:
-    f.write(html)
-print("Done.")
+for i, line in enumerate(lines, 1):
+    j = 0
+    while j < len(line):
+        ch = line[j]
+        # Skip escaped chars
+        if ch == '\\':
+            j += 2
+            continue
+        if ch == '`':
+            if bt_open:
+                bt_open = False
+            else:
+                bt_open = True
+                bt_line = i
+        j += 1
+
+if bt_open:
+    print(f"UNCLOSED TEMPLATE LITERAL starting at script line {bt_line}")
+    print(f"  Content: {lines[bt_line-1][:100]}")
+else:
+    print("Template literals: OK")
+
+# Check for unclosed strings
+for i, line in enumerate(lines, 1):
+    # Count unescaped single quotes (excluding template literals)
+    sq = line.count("'") - line.count("\\'")
+    if sq % 2 != 0:
+        # Could be legitimate (apostrophe in comment etc), just flag
+        if not line.strip().startswith("//"):
+            issues.append((i, "odd single quotes", line[:80]))
+
+if issues:
+    print(f"\nPotential string issues ({len(issues)} lines):")
+    for ln, typ, content in issues[:10]:
+        print(f"  Line {ln}: {content}")
+else:
+    print("String quotes: OK")
+
+# Show last 10 lines of script
+print("\nLast 10 lines of script:")
+for i, l in enumerate(lines[-10:], len(lines)-9):
+    print(f"  {i}: {repr(l[:80])}")

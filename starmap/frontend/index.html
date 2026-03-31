@@ -588,7 +588,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Noto Sans SC',-
 </div>
 <div id="toast"></div>
 <script>
-const API="https://galaxmeet-production.up.railway.app";
+const API="http://47.116.30.220:8000";
 const AMAP_KEY="8be337053e092994b64fdbe81879acba";
 
 function toast(msg,type="",dur=2800){const el=document.getElementById("toast");el.textContent=msg;el.className="show "+(type||"");clearTimeout(el._t);el._t=setTimeout(()=>el.className="",dur);}
@@ -936,7 +936,7 @@ function renderAuthForm(){
   }else{
     el.innerHTML=`<div class="form-group"><label class="form-label">\u90ae\u7bb1</label><div class="form-row"><input class="form-input" id="regEmail" type="email" placeholder="your@email.com"/><button class="send-code-btn" id="sendCodeBtn">\u53d1\u9001\u9a8c\u8bc1\u7801</button></div></div><div class="form-group"><label class="form-label">\u9a8c\u8bc1\u7801</label><input class="form-input" id="regCode" placeholder="6\u4f4d\u9a8c\u8bc1\u7801"/></div><div class="form-group"><label class="form-label">\u7528\u6237\u540d</label><input class="form-input" id="regName" placeholder="\u6635\u79f0"/></div><div class="form-group"><label class="form-label">\u5bc6\u7801</label><input class="form-input" id="regPw" type="password" placeholder="\u81f3\u5c118\u4f4d"/></div><div class="form-error" id="regErr"></div><button class="submit-btn" id="regBtn">\u6ce8\u518c</button><div class="form-switch">\u5df2\u6709\u8d26\u53f7\uff1f<a onclick="_authTab='login';document.querySelector('[data-auth=login]').click()">\u767b\u5f55</a></div>`;
     let _cdTimer=null;
-    document.getElementById("sendCodeBtn").addEventListener("click",async()=>{const email=document.getElementById("regEmail").value.trim();const btn=document.getElementById("sendCodeBtn");if(!email){document.getElementById("regErr").textContent="\u8bf7\u8f93\u5165\u90ae\u7bb1";return;}btn.disabled=true;try{await apiFetch("/api/auth/send-code",{method:"POST",body:JSON.stringify({email})});toast("\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001","success");let s=60;btn.textContent=s+"s";_cdTimer=setInterval(()=>{s--;btn.textContent=s+"s";if(s<=0){clearInterval(_cdTimer);btn.disabled=false;btn.textContent="\u91cd\u65b0\u53d1\u9001";}},1000);}catch(e){document.getElementById("regErr").textContent=e.message;btn.disabled=false;}});
+    document.getElementById("sendCodeBtn").addEventListener("click",async()=>{const email=document.getElementById("regEmail").value.trim();const btn=document.getElementById("sendCodeBtn");if(!email){document.getElementById("regErr").textContent="\u8bf7\u8f93\u5165\u90ae\u7bb1";return;}btn.disabled=true;try{await apiFetch("/api/email/send",{method:"POST",body:JSON.stringify({email})});toast("\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001","success");let s=60;btn.textContent=s+"s";_cdTimer=setInterval(()=>{s--;btn.textContent=s+"s";if(s<=0){clearInterval(_cdTimer);btn.disabled=false;btn.textContent="\u91cd\u65b0\u53d1\u9001";}},1000);}catch(e){document.getElementById("regErr").textContent=e.message;btn.disabled=false;}});
     document.getElementById("regBtn").addEventListener("click",async()=>{const email=document.getElementById("regEmail").value.trim();const code=document.getElementById("regCode").value.trim();const name=document.getElementById("regName").value.trim();const pw=document.getElementById("regPw").value;const err=document.getElementById("regErr");if(!email||!code||!name||!pw){err.textContent="\u8bf7\u586b\u5199\u5b8c\u6574";return;}try{const d=await apiFetch("/api/auth/register",{method:"POST",body:JSON.stringify({email,code,username:name,password:pw})});_token=d.token;_user=d.user;localStorage.setItem("sm_token",_token);localStorage.setItem("sm_user",JSON.stringify(_user));closeModal("authModal");renderUserMenu();toast("\u6ce8\u518c\u6210\u529f","success");}catch(e){err.textContent=e.message;}});
   }
 }
@@ -1020,6 +1020,7 @@ function openHistoryModal(){
   openModal("historyModal");
 }
 function openFavModal(){
+  if(!_token&&!_user){openAuthModal();return;}
   const el=document.getElementById("favList");
   // 合并旧收藏和景点收藏
   var spotFavs=JSON.parse(localStorage.getItem("sm_spot_favs")||"[]");
@@ -1707,6 +1708,10 @@ document.getElementById("communityFileGlobal").addEventListener("change", async 
 // 加载社区照片流——优先后端，降级本地
 async function loadCommunityFeed(){
   var container = document.getElementById("communityFeed");
+  if(!_token){
+    container.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--text3);font-size:13px"><div style="margin-bottom:12px">🔒 登录后即可查看摄影社区</div><button onclick="openAuthModal()" style="padding:8px 20px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-size:13px;cursor:pointer">登录 / 注册</button></div>';
+    return;
+  }
   container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text3)"><span class="spinner"></span>\u52a0\u8f7d\u4e2d\u2026</div>';
   var allPhotos = [];
   // 尝试后端

@@ -22,7 +22,7 @@ from scenes import (
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Galaxmeet API", version="1.0.0")
+app = FastAPI(title="焦点漫游 API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,

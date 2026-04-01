@@ -76,3 +76,23 @@ class PhotoSave(Base):
     user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
     photo_id   = Column(Integer, ForeignKey("community_photos.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PhotoComment(Base):
+    __tablename__ = "photo_comments"
+    id         = Column(Integer, primary_key=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    photo_id   = Column(Integer, ForeignKey("community_photos.id"), nullable=False)
+    content    = Column(String(500), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    user       = relationship("User")
+
+
+class SpotRating(Base):
+    __tablename__ = "spot_ratings"
+    id         = Column(Integer, primary_key=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    spot_name  = Column(String(200), nullable=False, index=True)
+    score      = Column(Integer, nullable=False)  # 1-5
+    created_at = Column(DateTime, default=datetime.utcnow)
+    user       = relationship("User")

@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, Query
 from typing import Optional, List
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -10,7 +11,7 @@ import os
 load_dotenv()
 
 from database import engine, get_db, Base
-from models import User, EmailCode, SavedPoint, UserPhoto, CommunityPhoto, PhotoLike, PhotoSave
+from models import User, EmailCode, SavedPoint, UserPhoto, CommunityPhoto, PhotoLike, PhotoSave, PhotoComment, SpotRating
 from auth import hash_password, verify_password, create_token, decode_token
 from email_code import send_email_code, gen_code
 from vision import analyze_image, update_user_tags, get_top_preferences
@@ -418,6 +419,67 @@ def api_toggle_save(
         db.commit()
         return {"saved": True}
 
+
+# ════════════════════════════════════════
+#  Photo Comments
+# ════════════════════════════════════════
+
+class CommentReq(BaseModel):
+    content: str
+
+@app.get("/api/community/photos/{photo_id}/comments")
+def api_get_comments(photo_id: int, db: Session = Depends(get_db)):
+    comments = db.query(PhotoComment).filter(PhotoComment.photo_id == photo_id).order_by(PhotoComment.created_at.asc()).all()
+    return {"comments": [
+        {"id": c.id, "content": c.content, "created_at": str(c.created_at),
+         "user": {"username": c.user.username, "avatar": c.user.avatar or ""}}
+        for c in comments
+    ]}
+
+@app.post("/api/community/photos/{photo_id}/comments")
+def api_add_comment(photo_id: int, req: CommentReq, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not req.content.strip():
+        raise HTTPException(400, "评论不能为空")
+    photo = db.query(CommunityPhoto).filter(CommunityPhoto.id == photo_id).first()
+    if not photo:
+        raise HTTPException(404, "照片不存在")
+    c = PhotoComment(user_id=user.id, photo_id=photo_id, content=req.content.strip()[:500])
+    db.add(c); db.commit(); db.refresh(c)
+    return {"id": c.id, "content": c.content, "created_at": str(c.created_at),
+            "user": {"username": user.username, "avatar": user.avatar or ""}}
+
+# ════════════════════════════════════════
+#  Spot Ratings
+# ════════════════════════════════════════
+
+class RatingReq(BaseModel):
+    score: int
+
+@app.post("/api/spots/{spot_name}/rate")
+def api_rate_spot(spot_name: str, req: RatingReq, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if req.score < 1 or req.score > 5:
+        raise HTTPException(400, "评分需在1-5之间")
+    existing = db.query(SpotRating).filter(SpotRating.user_id == user.id, SpotRating.spot_name == spot_name).first()
+    if existing:
+        existing.score = req.score
+    else:
+        db.add(SpotRating(user_id=user.id, spot_name=spot_name, score=req.score))
+    db.commit()
+    avg = db.query(func.avg(SpotRating.score)).filter(SpotRating.spot_name == spot_name).scalar() or 0
+    count = db.query(SpotRating).filter(SpotRating.spot_name == spot_name).count()
+    return {"avg": round(float(avg), 1), "count": count, "my_score": req.score}
+
+@app.get("/api/spots/{spot_name}/rating")
+def api_get_rating(spot_name: str, db: Session = Depends(get_db), authorization: str = Header(None)):
+    avg = db.query(func.avg(SpotRating.score)).filter(SpotRating.spot_name == spot_name).scalar() or 0
+    count = db.query(SpotRating).filter(SpotRating.spot_name == spot_name).count()
+    my_score = 0
+    if authorization and authorization.startswith("Bearer "):
+        uid = decode_token(authorization.split(" ")[1])
+        if uid:
+            r = db.query(SpotRating).filter(SpotRating.user_id == uid, SpotRating.spot_name == spot_name).first()
+            if r: my_score = r.score
+    return {"avg": round(float(avg), 1), "count": count, "my_score": my_score}
 
 # ════════════════════════════════════════
 #  Scene Recommendation Engine

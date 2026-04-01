@@ -333,6 +333,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Noto Sans SC',-
 .img-viewer-arrow.left{left:20px}
 .img-viewer-arrow.right{right:20px}
 .img-viewer-counter{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:13px}
+.cp-comments{padding:8px 12px;border-top:1px solid var(--border);font-size:12px}
 </style>
 </head>
 <body>
@@ -1673,20 +1674,30 @@ async function loadCommunityFeed(){
     container.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--text3);font-size:13px"><div style="margin-bottom:12px">🔒 登录后即可查看摄影社区</div><button onclick="openAuthModal()" style="padding:8px 20px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-size:13px;cursor:pointer">登录 / 注册</button></div>';
     return;
   }
-  container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text3)"><span class="spinner"></span>\u52a0\u8f7d\u4e2d\u2026</div>';
+  // 我的点赞/收藏 tab 不需要选景点
+  if(_cTab==="liked"||_cTab==="saved"){
+    // 直接加载
+  } else if(!window._filterSpot&&!window._currentCommunitySpot){
+    container.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--text3);font-size:13px"><div style="margin-bottom:8px">📍 请先在推荐景点中选择一个景点</div><div style="font-size:11px">点击景点卡片的「查看图片」按钮进入该景点社区</div></div>';
+    return;
+  }
+  var spotFilter = window._filterSpot || window._currentCommunitySpot || null;
+  if(window._filterSpot){window._currentCommunitySpot=window._filterSpot;window._filterSpot=null;}
+  // 显示当前景点名
+  var spotLabel = spotFilter ? '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:12px;color:var(--text2)"><span>📍 '+escH(spotFilter)+'</span><button onclick="window._currentCommunitySpot=null;loadCommunityFeed()" style="margin-left:auto;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;cursor:pointer">返回</button></div><div id="spotRatingArea"></div>' : '';
+  container.innerHTML = spotLabel+'<div style="text-align:center;padding:16px;color:var(--text3)"><span class="spinner"></span>\u52a0\u8f7d\u4e2d\u2026</div>';
   var allPhotos = [];
-  // 尝试后端
   var headers = _token ? {Authorization:"Bearer "+_token} : {};
-  var topSpots = [];
-  Object.keys(SPOTS_DB).forEach(function(k){(SPOTS_DB[k]||[]).forEach(function(s){if(topSpots.indexOf(s.name)<0)topSpots.push(s.name);});});
-  for(var i=0; i<Math.min(topSpots.length,3); i++){
+  // 只加载当前景点的照片
+  if(spotFilter){
     try{
-      var res = await fetch(API+"/api/community/photos?spot_name="+encodeURIComponent(topSpots[i]),{headers:headers});
-      if(res.ok){var data = await res.json();if(data.photos)allPhotos = allPhotos.concat(data.photos.map(function(p){p.spot_name=topSpots[i];return p;}));}
+      var res = await fetch(API+"/api/community/photos?spot_name="+encodeURIComponent(spotFilter),{headers:headers});
+      if(res.ok){var data = await res.json();if(data.photos)allPhotos = data.photos.map(function(p){p.spot_name=spotFilter;return p;});}
     }catch(e){}
   }
-  // 合并本地存储的照片
+  // 合并本地存储的照片（也按景点过滤）
   var local = JSON.parse(localStorage.getItem("sm_community")||"[]");
+  if(spotFilter) local = local.filter(function(p){return p.spot_name===spotFilter;});
   allPhotos = allPhotos.concat(local);
   // 按时间排序
   allPhotos.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
@@ -1717,9 +1728,15 @@ async function loadCommunityFeed(){
           '<button class="cp-action'+(p.saved?' saved':'')+'" onclick="toggleLocalSave('+p.id+',this,'+(isLocal?"true":"false")+')">'+
             '<svg viewBox="0 0 24 24" fill="'+(p.saved?'currentColor':'none')+'" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>'+
             '<span>\u6536\u85cf</span></button>'+
+          (isLocal?'':'<button class="cp-action" onclick="toggleComments('+p.id+',this.closest(\'.cp-card\'))">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'+
+            '<span>\u8bc4\u8bba</span></button>')+
         '</div>'+
+        '<div class="cp-comments" id="comments-'+p.id+'" style="display:none"></div>'+
       '</div></div>';
   }).join("");
+  // 加载景点评分
+  if(spotFilter){var rArea=document.getElementById("spotRatingArea");if(rArea)loadSpotRating(spotFilter,rArea);}
 }
 
 // 点赞/收藏——支持本地和后端
@@ -1738,6 +1755,63 @@ function toggleLocalSave(id,btn,isLocal){
     if(p){p.saved=!p.saved;localStorage.setItem("sm_community",JSON.stringify(local));
       btn.classList.toggle("saved",p.saved);btn.querySelector("svg").setAttribute("fill",p.saved?"currentColor":"none");toast(p.saved?"\u5df2\u6536\u85cf":"\u5df2\u53d6\u6d88","success");}
   }else{togglePhotoSave(id,btn);}
+}
+
+// 评论功能
+async function toggleComments(photoId, card){
+  var box = card.querySelector('.cp-comments');
+  if(box.style.display!=='none'){box.style.display='none';return;}
+  box.style.display='block';
+  box.innerHTML='<div style="padding:8px;color:var(--text3);font-size:11px">加载中…</div>';
+  try{
+    var res=await fetch(API+"/api/community/photos/"+photoId+"/comments",{headers:authHeaders()});
+    var data=await res.json();
+    var comments=data.comments||[];
+    var html=comments.map(function(c){
+      var cav=(c.user&&c.user.avatar)?'<img src="'+escH(c.user.avatar)+'" style="width:20px;height:20px;border-radius:50%;object-fit:cover"/>':'<div style="width:20px;height:20px;border-radius:50%;background:var(--primary-soft);color:var(--primary);font-size:10px;display:flex;align-items:center;justify-content:center">'+((c.user&&c.user.username)||"U")[0].toUpperCase()+'</div>';
+      return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'+cav+'<div><span style="font-size:11px;font-weight:600;color:var(--text)">'+escH((c.user&&c.user.username)||"匿名")+'</span><div style="font-size:12px;color:var(--text);margin-top:2px">'+escH(c.content)+'</div></div></div>';
+    }).join("");
+    if(!comments.length) html='<div style="padding:6px 0;font-size:11px;color:var(--text3)">暂无评论</div>';
+    html+='<div style="display:flex;gap:6px;margin-top:8px"><input class="form-input" id="cmt-input-'+photoId+'" placeholder="写评论…" style="flex:1;padding:6px 10px;font-size:12px"/><button onclick="submitComment('+photoId+')" style="padding:6px 12px;border-radius:6px;border:none;background:var(--primary);color:#fff;font-size:12px;cursor:pointer;white-space:nowrap">发送</button></div>';
+    box.innerHTML=html;
+  }catch(e){box.innerHTML='<div style="padding:8px;color:var(--red);font-size:11px">加载失败</div>';}
+}
+async function submitComment(photoId){
+  var input=document.getElementById('cmt-input-'+photoId);
+  if(!input||!input.value.trim())return;
+  try{
+    await fetch(API+"/api/community/photos/"+photoId+"/comments",{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({content:input.value.trim()})});
+    input.value="";
+    var card=input.closest('.cp-card');
+    toggleComments(photoId,card);toggleComments(photoId,card);// 关再开刷新
+  }catch(e){toast("评论失败","error");}
+}
+
+// 景点评分
+async function loadSpotRating(spotName,container){
+  try{
+    var res=await fetch(API+"/api/spots/"+encodeURIComponent(spotName)+"/rating",{headers:authHeaders()});
+    var d=await res.json();
+    renderStars(container,spotName,d.avg,d.count,d.my_score);
+  }catch(e){}
+}
+function renderStars(container,spotName,avg,count,mySc){
+  var html='<div style="display:flex;align-items:center;gap:6px;margin:6px 0">';
+  for(var i=1;i<=5;i++){
+    var filled=i<=mySc;
+    html+='<span onclick="rateSpot(\''+escH(spotName)+'\','+i+',this.parentElement)" style="cursor:pointer;font-size:16px;color:'+(filled?'#f59e0b':'var(--text3)')+'">'+(filled?'★':'☆')+'</span>';
+  }
+  html+='<span style="font-size:11px;color:var(--text2);margin-left:4px">'+avg+' ('+count+'人评)</span></div>';
+  container.innerHTML=html;
+}
+async function rateSpot(spotName,score,el){
+  if(!_token){openAuthModal();return;}
+  try{
+    var res=await fetch(API+"/api/spots/"+encodeURIComponent(spotName)+"/rate",{method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify({score:score})});
+    var d=await res.json();
+    renderStars(el.parentElement,spotName,d.avg,d.count,d.my_score);
+    toast("评分成功","success");
+  }catch(e){toast("评分失败","error");}
 }
 
 // 社区子tab切换

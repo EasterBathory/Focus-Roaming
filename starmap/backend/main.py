@@ -102,24 +102,8 @@ async def api_send_code(req: SendCodeReq, db: Session = Depends(get_db)):
         raise HTTPException(400, "该邮箱未注册")
 
     code = gen_code()
-    import asyncio
-    from concurrent.futures import ThreadPoolExecutor
-    loop = asyncio.get_event_loop()
-    try:
-        with ThreadPoolExecutor() as pool:
-            await asyncio.wait_for(
-                loop.run_in_executor(pool, send_email_code, req.email, code),
-                timeout=15
-            )
-    except asyncio.TimeoutError:
-        raise HTTPException(500, "邮件发送超时")
-    except ValueError as e:
-        raise HTTPException(429, str(e))
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(500, f"邮件发送失败：{type(e).__name__}: {e}")
 
+    # 暂时跳过邮件发送，直接存验证码（前端随便填即可注册）
     db.query(EmailCode).filter(
         EmailCode.email == req.email,
         EmailCode.purpose == req.purpose,
@@ -127,19 +111,12 @@ async def api_send_code(req: SendCodeReq, db: Session = Depends(get_db)):
     ).update({"used": True})
     db.add(EmailCode(email=req.email, code=code, purpose=req.purpose))
     db.commit()
+    print(f"[DEV] 验证码: {req.email} -> {code}")
     return {"ok": True}
 
 def verify_code(db: Session, email: str, code: str, purpose: str):
-    cutoff = datetime.utcnow() - timedelta(minutes=5)
-    rec = (db.query(EmailCode)
-           .filter(EmailCode.email == email, EmailCode.code == code,
-                   EmailCode.purpose == purpose, EmailCode.used == False,
-                   EmailCode.created_at >= cutoff)
-           .order_by(EmailCode.created_at.desc()).first())
-    if not rec:
-        raise HTTPException(400, "验证码错误或已过期")
-    rec.used = True
-    db.commit()
+    # 暂时跳过验证码校验
+    pass
 
 # ════════════════════════════════════════
 #  Auth

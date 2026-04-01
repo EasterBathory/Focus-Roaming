@@ -1678,7 +1678,18 @@ async function loadCommunityFeed(){
   if(_cTab==="liked"||_cTab==="saved"){
     // 直接加载
   } else if(!window._filterSpot&&!window._currentCommunitySpot){
-    container.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--text3);font-size:13px"><div style="margin-bottom:8px">📍 请先在推荐景点中选择一个景点</div><div style="font-size:11px">点击景点卡片的「查看图片」按钮进入该景点社区</div></div>';
+    // 显示景点搜索界面
+    var allSpotNames=[];
+    Object.keys(SPOTS_DB).forEach(function(k){(SPOTS_DB[k]||[]).forEach(function(s){if(allSpotNames.indexOf(s.name)<0)allSpotNames.push(s.name);});});
+    container.innerHTML = '<div style="padding:8px 0"><input class="form-input" id="communitySpotSearch" placeholder="� 搜索景点名称…" style="width:100%;padding:8px 12px;font-size:13px;margin-bottom:10px"/><div id="communitySpotList">'+
+      allSpotNames.slice(0,20).map(function(n){return '<div onclick="window._currentCommunitySpot=\''+escH(n).replace(/'/g,"\\'")+'\';loadCommunityFeed()" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">📍 '+escH(n)+'</div>';}).join("")+
+      '</div></div>';
+    // 搜索过滤
+    document.getElementById("communitySpotSearch").addEventListener("input",function(){
+      var q=this.value.trim().toLowerCase();
+      var filtered=q?allSpotNames.filter(function(n){return n.toLowerCase().indexOf(q)>=0;}):allSpotNames.slice(0,20);
+      document.getElementById("communitySpotList").innerHTML=filtered.slice(0,20).map(function(n){return '<div onclick="window._currentCommunitySpot=\''+escH(n).replace(/'/g,"\\'")+'\';loadCommunityFeed()" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">📍 '+escH(n)+'</div>';}).join("")||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">未找到匹配景点</div>';
+    });
     return;
   }
   var spotFilter = window._filterSpot || window._currentCommunitySpot || null;

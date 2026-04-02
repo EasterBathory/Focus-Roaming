@@ -1706,14 +1706,17 @@ async function loadCommunityFeed(){
     // 显示景点搜索界面
     var allSpotNames=[];
     Object.keys(SPOTS_DB).forEach(function(k){(SPOTS_DB[k]||[]).forEach(function(s){if(allSpotNames.indexOf(s.name)<0)allSpotNames.push(s.name);});});
-    container.innerHTML = '<div style="padding:8px 0"><input class="form-input" id="communitySpotSearch" placeholder="� 搜索景点名称…" style="width:100%;padding:8px 12px;font-size:13px;margin-bottom:10px"/><div id="communitySpotList">'+
-      allSpotNames.slice(0,20).map(function(n){return '<div onclick="selectCommunitySpot(\''+escH(n).replace(/'/g,"\\'")+'\');" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">📍 '+escH(n)+'</div>';}).join("")+
+    container.innerHTML = '<div style="padding:8px 0"><div style="display:flex;gap:6px"><input class="form-input" id="communitySpotSearch" placeholder="输入景点名称…" style="flex:1;padding:8px 12px;font-size:13px"/><button onclick="var v=document.getElementById(\'communitySpotSearch\').value.trim();if(v)selectCommunitySpot(v);" style="padding:8px 14px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-size:13px;cursor:pointer;white-space:nowrap">进入</button></div><div style="margin-top:10px;font-size:11px;color:var(--text3);margin-bottom:6px">热门景点</div><div id="communitySpotList">'+
+      allSpotNames.slice(0,30).map(function(n){return '<div onclick="selectCommunitySpot(\''+escH(n).replace(/'/g,"\\'")+'\');" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">'+escH(n)+'</div>';}).join("")+
       '</div></div>';
-    // 搜索过滤
-    document.getElementById("communitySpotSearch").addEventListener("input",function(){
+    // 搜索过滤+回车进入
+    var _csInput=document.getElementById("communitySpotSearch");
+    _csInput.addEventListener("input",function(){
       var q=this.value.trim().toLowerCase();
-      var filtered=q?allSpotNames.filter(function(n){return n.toLowerCase().indexOf(q)>=0;}):allSpotNames.slice(0,20);
-      document.getElementById("communitySpotList").innerHTML=filtered.slice(0,20).map(function(n){return '<div onclick="selectCommunitySpot(\''+escH(n).replace(/'/g,"\\'")+'\');" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">📍 '+escH(n)+'</div>';}).join("")||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">未找到匹配景点</div>';
+      var filtered=q?allSpotNames.filter(function(n){return n.toLowerCase().indexOf(q)>=0;}):allSpotNames.slice(0,30);
+      document.getElementById("communitySpotList").innerHTML=filtered.slice(0,30).map(function(n){return '<div onclick="selectCommunitySpot(\''+escH(n).replace(/'/g,"\\'")+'\');" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">'+escH(n)+'</div>';}).join("")||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">列表中无此景点，点击「进入」可直接创建</div>';
+    });
+    _csInput.addEventListener("keydown",function(e){if(e.key==="Enter"){var v=this.value.trim();if(v)selectCommunitySpot(v);}});
     });
     return;
   }

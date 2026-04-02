@@ -1663,8 +1663,13 @@ document.getElementById("communityFileGlobal").addEventListener("change", async 
         (async function(){
           var saved=false;
           if(_token){try{var center=map.getCenter();var fd=new FormData();fd.append("file",file);var url=API+"/api/community/photos?spot_name="+encodeURIComponent(spotName)+"&lat="+center.lat+"&lng="+center.lng+"&caption="+encodeURIComponent(caption);var res=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+_token},body:fd});if(res.ok)saved=true;}catch(ex){}}
-          if(!saved){var local=JSON.parse(localStorage.getItem("sm_community")||"[]");local.unshift({id:Date.now(),image:imgData,spot_name:spotName,caption:caption,likes:0,liked:false,saved:false,user:{username:(_user&&_user.username)||"\u6211",avatar:(_user&&_user.avatar)||""},created_at:new Date().toISOString()});if(local.length>50)local=local.slice(0,50);localStorage.setItem("sm_community",JSON.stringify(local));}
+          // 无论后端是否成功，都存一份到本地保证立即可见
+          var local=JSON.parse(localStorage.getItem("sm_community")||"[]");
+          local.unshift({id:Date.now(),image:imgData,spot_name:spotName,caption:caption,likes:0,liked:false,saved:false,user:{username:(_user&&_user.username)||"\u6211",avatar:(_user&&_user.avatar)||""},created_at:new Date().toISOString()});
+          if(local.length>50)local=local.slice(0,50);
+          localStorage.setItem("sm_community",JSON.stringify(local));
           window._currentCommunitySpot=spotName;
+          switchPanel(2);
           loadCommunityFeed();
           toast("上传成功","success");
         })();

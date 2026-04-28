@@ -1321,6 +1321,17 @@ document.getElementById("btnEvaluate").addEventListener("click",async function()
         drive_text:driveH<1?Math.round(driveH*60)+"\u5206\u949f\u8f66\u7a0b":Math.floor(driveH)+"\u5c0f\u65f6"+Math.round((driveH%1)*60)+"\u5206\u8f66\u7a0b",
         weather:{temp:wx.temperature_2m||"--",humidity:wx.relative_humidity_2m||"--",cloud:wx.cloud_cover||"--",wind:wx.wind_speed_10m||"--",vis:Math.round((wx.visibility||10000)/1000)}});
     });});
+    // 异步获取每个景点的独立天气（并发，最多取前8个）
+    var spotsToFetch=allSpots.slice(0,8);
+    try{
+      var wxPromises=spotsToFetch.map(function(s){
+        return fetch("https://api.open-meteo.com/v1/forecast?latitude="+s.lat+"&longitude="+s.lng+"&current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,visibility&timezone=auto")
+          .then(function(r){return r.json();}).then(function(d){var c=d.current||{};return{temp:Math.round(c.temperature_2m||0),humidity:c.relative_humidity_2m||0,cloud:c.cloud_cover||0,wind:c.wind_speed_10m||0,vis:Math.round((c.visibility||10000)/1000)};})
+          .catch(function(){return null;});
+      });
+      var wxResults=await Promise.all(wxPromises);
+      wxResults.forEach(function(w,i){if(w)spotsToFetch[i].weather=w;});
+    }catch(e){}
     // 智能排序：基于自然指标给每个景点打"此刻拍摄适合度"分
     var hour=new Date().getHours();
     var month=new Date().getMonth()+1;// 1-12
@@ -1503,9 +1514,15 @@ function onSpotClick(idx){
 }
 
 // Spot popup on map
-function showSpotPopup(idx){
+async function showSpotPopup(idx){
   var spots=window._evalSpots;if(!spots||!spots[idx])return;var s=spots[idx];
   var localPhotos=JSON.parse(localStorage.getItem("sm_community")||"[]").filter(function(p){return p.spot_name===s.name;});
+  // 也从后端加载照片
+  try{
+    var headers=_token?{Authorization:"Bearer "+_token}:{};
+    var res=await fetch(API+"/api/community/photos?spot_name="+encodeURIComponent(s.name),{headers:headers});
+    if(res.ok){var d=await res.json();if(d.photos){d.photos.forEach(function(p){p.spot_name=s.name;});localPhotos=d.photos.concat(localPhotos);}}
+  }catch(e){}
   // 存照片数据供查看器用
   window._popupPhotos=localPhotos;
   var photoStrip='';
@@ -1624,13 +1641,15 @@ function switchPanel(idx){
   });
   document.getElementById("panelTitle").textContent = _panelNames[_panelIdx];
   if(_panelIdx === 2){ loadCommunityFeed(); }
+  // 离开社区面板时清掉当前景点，下次进来显示搜索列表
+  if(_panelIdx !== 2){ window._currentCommunitySpot=null; }
 }
 document.getElementById("panelPrev").addEventListener("click", function(){ switchPanel(_panelIdx - 1); });
 document.getElementById("panelNext").addEventListener("click", function(){ switchPanel(_panelIdx + 1); });
 
 // 社区全局上传
 document.getElementById("btnUploadCommunity").addEventListener("click", function(){
-  if(!_token){openAuthModal();return;}
+  if(!_token){openAuthModal();toast("登录后才能上传照片","");return;}
   document.getElementById("communityFileGlobal").click();
 });
 document.getElementById("communityFileGlobal").addEventListener("change", async function(e){
@@ -1641,18 +1660,19 @@ document.getElementById("communityFileGlobal").addEventListener("change", async 
   Object.keys(SPOTS_DB).forEach(function(k){(SPOTS_DB[k]||[]).forEach(function(s){if(allNames.indexOf(s.name)<0)allNames.push(s.name);});});
   // 弹出选择框
   var html='<div style="max-height:300px;overflow-y:auto">'+allNames.map(function(n){
-    return '<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'" onclick="window._uploadSpotName=\''+escH(n).replace(/'/g,"\\'")+'\';closeModal(\'spotPickerModal\')">'+escH(n)+'</div>';
+    return '<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'" onclick="window._uploadSpotName=\''+escH(n).replace(/'/g,"\\'")+'\';var m=document.getElementById(\'spotPickerModal\');if(m)m.remove();">'+escH(n)+'</div>';
   }).join("")+'</div>';
   // 创建临时modal
   var overlay=document.createElement("div");
   overlay.className="modal-overlay open";overlay.id="spotPickerModal";
   overlay.innerHTML='<div class="modal" style="max-width:360px;padding:20px"><button class="modal-close" onclick="closeModal(\'spotPickerModal\')">&#10005;</button><div class="modal-title" style="font-size:15px;margin-bottom:10px">\u9009\u62e9\u666f\u70b9</div><input class="form-input" placeholder="\u641c\u7d22\u666f\u70b9\u540d\u79f0\u2026" style="margin-bottom:8px;font-size:13px" oninput="var q=this.value.toLowerCase();this.nextElementSibling.querySelectorAll(\'div>div\').forEach(function(d){d.style.display=d.textContent.toLowerCase().includes(q)?\'\':\' none\'})"/>'+html+'</div>';
-  overlay.addEventListener("click",function(ev){if(ev.target===overlay)closeModal("spotPickerModal");});
+  overlay.addEventListener("click",function(ev){if(ev.target===overlay){window._uploadSpotName=null;overlay.remove();}});
   document.body.appendChild(overlay);
   // 等待用户选择
   window._uploadSpotName=null;
   var checkInterval=setInterval(function(){
-    if(!document.getElementById("spotPickerModal")){
+    if(!document.getElementById("spotPickerModal")||!document.getElementById("spotPickerModal").classList.contains("open")){
+      var el=document.getElementById("spotPickerModal");if(el)el.remove();
       clearInterval(checkInterval);
       var spotName=window._uploadSpotName;
       if(!spotName){self.value="";return;}
@@ -1661,17 +1681,24 @@ document.getElementById("communityFileGlobal").addEventListener("change", async 
       reader.onload=function(ev){
         var imgData=ev.target.result;
         (async function(){
-          var saved=false;
-          if(_token){try{var center=map.getCenter();var fd=new FormData();fd.append("file",file);var url=API+"/api/community/photos?spot_name="+encodeURIComponent(spotName)+"&lat="+center.lat+"&lng="+center.lng+"&caption="+encodeURIComponent(caption);var res=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+_token},body:fd});if(res.ok)saved=true;}catch(ex){}}
-          // 无论后端是否成功，都存一份到本地保证立即可见
-          var local=JSON.parse(localStorage.getItem("sm_community")||"[]");
-          local.unshift({id:Date.now(),image:imgData,spot_name:spotName,caption:caption,likes:0,liked:false,saved:false,user:{username:(_user&&_user.username)||"\u6211",avatar:(_user&&_user.avatar)||""},created_at:new Date().toISOString()});
-          if(local.length>50)local=local.slice(0,50);
-          localStorage.setItem("sm_community",JSON.stringify(local));
-          window._currentCommunitySpot=spotName;
-          switchPanel(2);
-          loadCommunityFeed();
-          toast("上传成功","success");
+          if(!_token){toast("请先登录","error");return;}
+          try{
+            var center=map.getCenter();
+            var fd=new FormData();fd.append("file",file);
+            var url=API+"/api/community/photos?spot_name="+encodeURIComponent(spotName)+"&lat="+center.lat+"&lng="+center.lng+"&caption="+encodeURIComponent(caption);
+            var res=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+_token},body:fd});
+            if(res.ok){
+              window._currentCommunitySpot=spotName;
+              switchPanel(2);
+              setTimeout(function(){loadCommunityFeed();},150);
+              toast("上传成功","success");
+            }else{
+              var err=await res.json().catch(function(){return{};});
+              toast("上传失败："+(err.detail||"服务器错误"),"error");
+            }
+          }catch(ex){
+            toast("上传失败：网络错误","error");
+          }
         })();
       };
       reader.readAsDataURL(file);

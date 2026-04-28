@@ -6,7 +6,7 @@ from sqlalchemy import func
 from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-import os
+import os, asyncio
 
 load_dotenv()
 
@@ -104,7 +104,24 @@ async def api_send_code(req: SendCodeReq, db: Session = Depends(get_db)):
 
     code = gen_code()
 
-    # 暂时跳过邮件发送，直接存验证码（前端随便填即可注册）
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    loop = asyncio.get_event_loop()
+    try:
+        with ThreadPoolExecutor() as pool:
+            await asyncio.wait_for(
+                loop.run_in_executor(pool, send_email_code, req.email, code),
+                timeout=15
+            )
+    except asyncio.TimeoutError:
+        raise HTTPException(500, "邮件发送超时")
+    except ValueError as e:
+        raise HTTPException(429, str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"邮件发送失败：{type(e).__name__}: {e}")
+
     db.query(EmailCode).filter(
         EmailCode.email == req.email,
         EmailCode.purpose == req.purpose,
@@ -112,12 +129,19 @@ async def api_send_code(req: SendCodeReq, db: Session = Depends(get_db)):
     ).update({"used": True})
     db.add(EmailCode(email=req.email, code=code, purpose=req.purpose))
     db.commit()
-    print(f"[DEV] 验证码: {req.email} -> {code}")
     return {"ok": True}
 
 def verify_code(db: Session, email: str, code: str, purpose: str):
-    # 暂时跳过验证码校验
-    pass
+    cutoff = datetime.utcnow() - timedelta(minutes=5)
+    rec = (db.query(EmailCode)
+           .filter(EmailCode.email == email, EmailCode.code == code,
+                   EmailCode.purpose == purpose, EmailCode.used == False,
+                   EmailCode.created_at >= cutoff)
+           .order_by(EmailCode.created_at.desc()).first())
+    if not rec:
+        raise HTTPException(400, "验证码错误或已过期")
+    rec.used = True
+    db.commit()
 
 # ════════════════════════════════════════
 #  Auth
@@ -542,6 +566,33 @@ async def api_evaluate_scenes(
     route = []
     if spots and "astronomy" in data:
         route = plan_route(spots, data.get("astronomy", {}))
+
+    # Fetch per-spot weather concurrently
+    if spots:
+        import httpx
+        async def _get_spot_wx(s):
+            try:
+                async with httpx.AsyncClient(timeout=8) as client:
+                    r = await client.get(
+                        f"https://api.open-meteo.com/v1/forecast?"
+                        f"latitude={s['lat']}&longitude={s['lng']}"
+                        f"&current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,visibility"
+                        f"&timezone=auto"
+                    )
+                    c = r.json().get("current", {})
+                    return {
+                        "temp": round(c.get("temperature_2m", 0)),
+                        "cloud": c.get("cloud_cover", 0),
+                        "humidity": c.get("relative_humidity_2m", 0),
+                        "wind": c.get("wind_speed_10m", 0),
+                        "visibility": round(c.get("visibility", 10000) / 1000),
+                    }
+            except Exception:
+                return {"temp": 0, "cloud": 0, "humidity": 0, "wind": 0, "visibility": 0}
+
+        wx_results = await asyncio.gather(*[_get_spot_wx(s) for s in spots])
+        for i, s in enumerate(spots):
+            s["weather"] = wx_results[i]
 
     return {
         "location": {"lat": lat, "lng": lng},

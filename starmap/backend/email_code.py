@@ -12,8 +12,8 @@ def send_email_code(to_email: str, code: str) -> bool:
         raise ValueError("Too frequent, please retry after 60 seconds")
     _rate[to_email] = now
 
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASS", "")
+    resend_key = os.getenv("RESEND_API_KEY", "")
+    from_email = os.getenv("RESEND_FROM", "焦点漫游 <onboarding@resend.dev>")
 
     body = (
         '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;'
@@ -26,17 +26,17 @@ def send_email_code(to_email: str, code: str) -> bool:
         '</div>'
     )
 
-    import yagmail
-    yag = yagmail.SMTP(
-        user=smtp_user,
-        password=smtp_pass,
-        host=os.getenv("SMTP_HOST", "smtp.qq.com"),
-        port=int(os.getenv("SMTP_PORT", 465)),
-        smtp_ssl=True,
-    )
-    yag.send(
-        to=to_email,
-        subject=f"焦点漫游验证码 {code}",
-        contents=body,
-    )
+    if resend_key:
+        import resend
+        resend.api_key = resend_key
+        resend.Emails.send({
+            "from": from_email,
+            "to": [to_email],
+            "subject": f"焦点漫游验证码 {code}",
+            "html": body,
+        })
+    else:
+        # 没有 Resend key 时降级：跳过发送，验证码打印到日志
+        print(f"[DEV] 验证码: {to_email} -> {code}")
+
     return True

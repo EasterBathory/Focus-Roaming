@@ -111,7 +111,7 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8003
 
 - MySQL：`DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME`
 - JWT：`JWT_SECRET`
-- 邮件：`SMTP_*` 或项目实际使用的邮件 API 配置
+- 邮件：`RESEND_API_KEY`、`RESEND_FROM`（当前验证码发送代码使用 Resend）
 - 地图服务：`AMAP_KEY`
 - AI 服务：`ALI_AK_ID`、`ALI_AK_SECRET`（如启用）
 
@@ -182,7 +182,7 @@ The current project notes refer to a local API endpoint at `http://127.0.0.1:800
 
 ### Configuration and Security
 
-The backend environment template is `starmap/backend/.env.example`. Configure database, JWT, email, map, and optional AI credentials locally in `.env`. Do not commit secrets, personal data, database dumps, or local environment files.
+The backend environment template is `starmap/backend/.env.example`. Configure database, JWT, Resend email, map, and optional AI credentials locally in `.env`. Do not commit secrets, personal data, database dumps, or local environment files.
 
 ### Project Status
 

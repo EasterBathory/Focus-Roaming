@@ -1,16 +1,24 @@
-import random, time, os
+import os
+import secrets
+import threading
+import time
 from typing import Dict
 
 _rate: Dict[str, float] = {}
+_rate_lock = threading.Lock()
+
 
 def gen_code() -> str:
-    return str(random.randint(100000, 999999))
+    """Generate a six-digit verification code using a cryptographically secure source."""
+    return f"{secrets.randbelow(900000) + 100000:06d}"
 
 def send_email_code(to_email: str, code: str) -> bool:
-    now = time.time()
-    if _rate.get(to_email, 0) + 60 > now:
-        raise ValueError("Too frequent, please retry after 60 seconds")
-    _rate[to_email] = now
+    now = time.monotonic()
+    # Protect the in-process limiter from concurrent requests in this worker.
+    with _rate_lock:
+        if _rate.get(to_email, 0) + 60 > now:
+            raise ValueError("Too frequent, please retry after 60 seconds")
+        _rate[to_email] = now
 
     resend_key = os.getenv("RESEND_API_KEY", "")
     from_email = os.getenv("RESEND_FROM", "焦点漫游 <onboarding@resend.dev>")

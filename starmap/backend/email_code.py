@@ -16,7 +16,8 @@ def send_email_code(to_email: str, code: str) -> bool:
     now = time.monotonic()
     # Protect the in-process limiter from concurrent requests in this worker.
     with _rate_lock:
-        if _rate.get(to_email, 0) + 60 > now:
+        last_sent = _rate.get(to_email)
+        if last_sent is not None and last_sent + 60 > now:
             raise ValueError("Too frequent, please retry after 60 seconds")
         _rate[to_email] = now
 

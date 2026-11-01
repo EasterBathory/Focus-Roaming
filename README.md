@@ -103,7 +103,7 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8003
 
 使用 VS Code Live Server 打开 `starmap/frontend/index.html`，或使用其他静态文件服务器提供前端页面。
 
-当前项目说明中提到前端 API 地址使用本地 `http://127.0.0.1:8003`。如果部署到其他地址，请先检查并调整前端 API 配置及后端 CORS 设置。
+注意：当前 `starmap/frontend/index.html` 将 API 地址写死为 `http://47.116.30.220:8000`，并非本地地址。若要本机联调，需要先将前端 API 地址改为本地后端地址（本 README 示例为 `http://127.0.0.1:8003`）；若使用线上前端，则应配置对应的后端地址。后端通过 `.env` 中的 `FRONTEND_ORIGIN` 设置允许的前端来源，多个来源用英文逗号分隔。
 
 ### 配置说明
 
@@ -178,7 +178,7 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8003
 
 6. Serve `starmap/frontend/index.html` with VS Code Live Server or another static file server.
 
-The current project notes refer to a local API endpoint at `http://127.0.0.1:8003`. Review the frontend API configuration and backend CORS settings when using a different host or deployment environment.
+Note: `starmap/frontend/index.html` currently hardcodes the API endpoint as `http://47.116.30.220:8000`; it does not point to the local backend. For local integration, change the frontend API endpoint to the local backend URL (this README uses `http://127.0.0.1:8003`). For a deployed frontend, configure the matching backend URL. Set allowed frontend origins in the backend `.env` using `FRONTEND_ORIGIN`; separate multiple origins with commas.
 
 ### Configuration and Security
 

@@ -21,13 +21,36 @@ from scenes import (
     get_nearby_spots, plan_route,
 )
 
+def _validate_runtime_config():
+    """Fail fast when security-critical configuration is missing or unsafe."""
+    jwt_secret = os.getenv("JWT_SECRET", "").strip()
+    if len(jwt_secret) < 32 or "replace_with" in jwt_secret.lower() or "your_" in jwt_secret.lower():
+        raise RuntimeError(
+            "JWT_SECRET must be set to a private random value of at least 32 characters. "
+            "Generate one locally and store it in the backend .env file."
+        )
+
+
+_validate_runtime_config()
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="焦点漫游 API", version="1.0.0")
 
+# FRONTEND_ORIGIN accepts a comma-separated list of exact origins.
+# Example: http://localhost:5500,https://your-frontend.example.com
+_frontend_origins = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "FRONTEND_ORIGIN",
+        "http://localhost:5500,http://127.0.0.1:5500",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_frontend_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
